@@ -4,4 +4,4 @@ visitor em arvore binaria
 
 Daniel - dcc4
 
-Marilia - mms5 (mochila)
+Marilia - mms5
