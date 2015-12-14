@@ -1,4 +1,9 @@
 package minijava.visitor;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+
 
 //implementacao do visitor numa arvore
 //como dito em aula, visitando cada
@@ -315,31 +320,235 @@ class Tree {
 		nti = v.visit(this);
 		return 0;
 	}
-
 }
 
-class Visitor {
-	Tree l;
-	Tree r;
+public class ChecadorTipos {
 
-	public int visit(Tree n) {
-		int nti;
+    static class Program {
+        Declaration dec;
+        Expression ex;
+        public Program(Declaration dec1, Expression ex1) {
+            this.dec = dec1;
+            this.ex = ex1;
+        }
+        void accept(Visitor vis) {
+            vis.visit(this);
+        }
+    }
+    
+    static class Declaration {
+        Id id;
+        Type type;
+        public Declaration(Id x, Type arg) {
+            this.id = x;
+            this.type = arg;
+        }
+        
+        void accept(Visitor vis) {
+            vis.visit(this);
+        }
+    }
+    
+    /************************/
+    static class Type {
+        
+        void accept(Visitor vis) {
+            vis.visit(this);
+        }
+    }
+    
+    static class CharType extends Type {}
+    
+    static class IntType extends Type {}
 
-		if (n.GetHas_Right()) {
-			r = n.GetRight();
-			nti = r.accept(this);
-		} else
-			nti = 0;
-
-		if (n.GetHas_Left()) {
-			l = n.GetLeft();
-			nti = l.accept(this);
-		} else
-			nti = 0;
-
-		return 0;
-	}
-
+    static class ArrayType extends Type {
+        int size;
+        Type t;
+        public ArrayType(int s, IntType intType) {
+            this.size = s;
+            this.t = intType;
+        }
+    }
+    
+    /************************/
+    static class Expression {
+        
+        void accept(Visitor vis) {
+            vis.visit(this);
+        }
+    }
+    
+    static class Literal extends Expression {
+        char l;
+        public Literal(char c) {
+            this.l = c;
+        }
+    }
+    
+    static class Num extends Expression {
+        int n;
+        public Num(int num) {
+            this.n = num;
+        }
+    }
+    
+    static class Id extends Expression {
+        String name;
+        public Id(String name) {
+            this.name = name;
+        }
+        public String toString() {
+            return name;
+        }
+    }
+    
+    static class Mod extends Expression {
+        Expression e1, e2;
+    }
+    
+    static class ArrayIndexing extends Expression {
+        Expression e1, e2;
+        public ArrayIndexing(Expression e3, Expression e4) {
+            this.e1 = e3;
+            this.e2 = e4;
+        }
+    }
+    
+    /*******************************/
+    static interface Visitor {
+        public void visit(Program p);
+        public void visit(Expression e);
+        public void visit(Type t);
+        public void visit(Declaration d);
+    }
+    
+    /*******************************/
+    static class IdVisitor implements Visitor {
+        Set<Id> ids = new HashSet<Id>();
+        
+        @Override
+        public void visit(Program p) {
+            p.d.accept(this);
+            p.e.accept(this);
+        }
+        
+        @Override
+        public void visit(Expression e) {
+            if (e instanceof Id) {
+                ids.add((Id)e);
+            }
+        }
+        
+        @Override
+        public void visit(Type t) { }
+        
+        @Override
+        public void visit(Declaration d) {
+            d.id.accept(this);
+            d.type.accept(this);
+        }
+    }
+	
+    /*******************************/
+    static class CheckTypesVisitor implements Visitor {
+        
+        // tipo de uma variavel (identificador)
+        Map<Id, String> types = new HashMap<Id, String>();
+        
+        // tipo de uma expressao
+        Map<Expression, String> typesExpression = new HashMap<Expression, String>();
+	
+        @Override
+	public void visit(Program p) {
+            p.d.accept(this);
+            p.e.accept(this);
+        }
+        
+        @Override
+	public void visit(Expression e) {
+            String type;
+            if (e instanceof Id) {
+                type = types.get((Id)e);
+                if (type == null) {
+                    throw new RuntimeException("TYPE ERROR!  Could not find type for " + e);
+                }
+            } else if (e instanceof Literal) {
+                type = "char";
+            } else if (e instanceof Num) {
+                type = "int";
+            } else if (e instanceof Mod) {
+                //@TODO missing
+                throw new UnsupportedOperationException("Please, implement this");
+            } else if (e instanceof ArrayIndexing) {
+                ArrayIndexing ai = (ArrayIndexing) e;
+                
+                ai.e1.accept(this);
+                ai.e2.accept(this);
+                
+                // check expression is indeed array
+                Expression exp1 = ai.e1;
+                String type1 = typesExpression.get(exp1);
+                if (!type1.startsWith("array")) {
+                    throw new RuntimeException("TYPE ERROR! Expecting array, found " + type1);
+                }
+                
+                // check indexing expression is integer
+                Expression exp2 = ai.e2;
+                String type2 = typesExpression.get(exp2);
+                if (!type2.equals("int")) {
+                    throw new RuntimeException("TYPE ERROR!");
+                }
+                // take the 3rd element of string "array:<number>:<type>"
+                type = type1.split(":")[2];
+            } else {
+                throw new RuntimeException();
+            }
+            
+            typesExpression.put(expression, type);
+        }
+        
+        @Override
+        public void visit(Type t) { }
+        
+        @Override
+        public void visit(Declaration d) {
+            Id id = d.id;
+            String typeName;
+            if (d.type instanceof CharType) {
+                typeName = "char";
+            } else if (d.type instanceof IntType) {
+                typeName = "int";
+            } else if (d.type instanceof ArrayType) {
+                ArrayType at = (ArrayType) d.type;
+                typeName = "array:"+at.size+":"+at.type;
+            } else {
+                throw new RuntimeException();
+            }
+            types.put(id, typeName);
+        }
+    }
+	
+    public static void main(String[] args) {
+	
+        Id x = new Id("x");
+        IntType intType = new IntType();
+        Declaration d1 = new Declaration(x, intType);
+        Program pro = new Program(d1, x);
+	
+        IdVisitor vis = new IdVisitor();
+        prog.accept(vis);
+        
+        CheckTypesVisitor vis2 = new CheckTypesVisitor();
+        prog.accept(vis2);
+	
+        Id y = new Id("y");
+        ArrayType atype = new ArrayType(1, intType);
+        Declaration d2 = new Declaration(y, atype);
+        Expression e1 = new ArrayIndexing(y new Num(5));
+        Program pro2 = new Program(d2, e1);
+	
+        pro2.accept(vis2);
+    }
 }
 
 class MyVisitor extends Visitor {
